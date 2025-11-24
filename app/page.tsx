@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -72,6 +72,8 @@ export default function PDFCompilerPage() {
   const [isScanningPersons, setIsScanningPersons] = useState(false)
   const [isJoiningFinal, setIsJoiningFinal] = useState(false)
   const [hasAutoScanned, setHasAutoScanned] = useState(false)
+  const [activeTab, setActiveTab] = useState('base')
+  const rhHandleVersionRef = useRef(0)
 
 
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -92,8 +94,14 @@ export default function PDFCompilerPage() {
       const dirHandle = await window.showDirectoryPicker({
         mode: 'readwrite'
       })
-      
+
+      rhHandleVersionRef.current += 1
       setRhDirectoryHandle(dirHandle)
+      setAvailableMonthsForFinal([])
+      setSelectedMonthsForFinal([])
+      setPersonsData([])
+      setSelectedPersons([])
+      setHasAutoScanned(false)
       
       toast({
         title: 'Pasta Selecionada',
@@ -539,6 +547,8 @@ export default function PDFCompilerPage() {
       return
     }
 
+    const versionAtStart = rhHandleVersionRef.current
+
     try {
       const folder14Handle = await rhDirectoryHandle.getDirectoryHandle('14')
       const availableMonths: string[] = []
@@ -551,6 +561,9 @@ export default function PDFCompilerPage() {
       }
 
       availableMonths.sort()
+      if (versionAtStart !== rhHandleVersionRef.current) {
+        return
+      }
       setAvailableMonthsForFinal(availableMonths)
       setHasAutoScanned(true)
 
@@ -567,6 +580,10 @@ export default function PDFCompilerPage() {
         })
       }
     } catch (error) {
+      if (versionAtStart !== rhHandleVersionRef.current) {
+        return
+      }
+
       console.error('[v0] Error scanning folder 14:', error)
       toast({
         title: 'Erro',
@@ -576,10 +593,8 @@ export default function PDFCompilerPage() {
     }
   }
 
-  const handleTabChange = async (value: string) => {
-    if (value === 'final' && rhDirectoryHandle && !hasAutoScanned) {
-      await scanFolder14()
-    }
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
   }
 
   const handleScanPersons = async () => {
@@ -615,8 +630,11 @@ export default function PDFCompilerPage() {
             if (entry.kind === 'file' && entry.name.endsWith('.pdf')) {
               const match = entry.name.match(/^\d{2}_\d{4}\s+(.+)\.pdf$/)
               if (match) {
-                const personName = match[1].trim()
-                
+                const personName = match[1]
+                  .replace(/\d+/g, '')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+
                 if (!personsMap.has(personName)) {
                   personsMap.set(personName, { months: new Set(), filenames: [] })
                 }
@@ -855,6 +873,12 @@ export default function PDFCompilerPage() {
       setIsJoiningFinal(false)
     }
   }
+
+  useEffect(() => {
+    if (activeTab === 'final' && rhDirectoryHandle) {
+      scanFolder14()
+    }
+  }, [activeTab, rhDirectoryHandle])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4 md:p-8">
@@ -1119,17 +1143,15 @@ export default function PDFCompilerPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {!hasAutoScanned && (
-                    <Button
-                      variant="outline"
-                      onClick={scanFolder14}
-                      disabled={!rhDirectoryHandle}
-                      className="w-full"
-                    >
-                      <Scan className="mr-2 h-4 w-4" />
-                      Carregar Meses Disponíveis
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    onClick={scanFolder14}
+                    disabled={!rhDirectoryHandle}
+                    className="w-full"
+                  >
+                    <Scan className="mr-2 h-4 w-4" />
+                    {hasAutoScanned ? 'Recarregar Meses Disponíveis' : 'Carregar Meses Disponíveis'}
+                  </Button>
 
                   {availableMonthsForFinal.length === 0 && hasAutoScanned && (
                     <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
